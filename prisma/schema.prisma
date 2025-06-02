@@ -1,0 +1,551 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    // NOTE: When using mysql or sqlserver, uncomment the @db.Text annotations in model Account below
+    // Further reading:
+    // https://next-auth.js.org/adapters/prisma#create-the-prisma-schema
+    // https://www.prisma.io/docs/reference/api-reference/prisma-schema-reference#string
+    url      = env("DATABASE_URL")
+}
+
+model User {
+    id            String    @id @default(cuid())
+    name          String?
+    email         String?   @unique
+    emailVerified DateTime?
+    image         String?
+    bio           String?
+    weight        Float?
+    height        Float?
+    fitnessLevel  String?   @default("BEGINNER") // BEGINNER, INTERMEDIATE, ADVANCED
+    birthDate     DateTime?
+    role          String    @default("USER") // USER, ADMIN
+    points        Int       @default(0)
+    createdAt     DateTime  @default(now())
+    updatedAt     DateTime  @updatedAt
+
+    // Relaciones
+    accounts      Account[]
+    sessions      Session[]
+    posts         Post[]
+    activities    Activity[]
+    groupMembers  GroupMember[]
+    notifications Notification[]
+    challengeParticipants ChallengeParticipant[]
+    achievements  UserAchievement[]
+    comments      Comment[]
+    postLikes     PostLike[]
+}
+
+// Necessary for Next auth
+model Account {
+    id                       String  @id @default(cuid())
+    userId                   String
+    type                     String
+    provider                 String
+    providerAccountId        String
+    refresh_token            String? // @db.Text
+    access_token             String? // @db.Text
+    expires_at               Int?
+    token_type               String?
+    scope                    String?
+    id_token                 String? // @db.Text
+    session_state            String?
+    user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+    refresh_token_expires_in Int?
+
+    @@unique([provider, providerAccountId])
+}
+
+model Session {
+    id           String   @id @default(cuid())
+    sessionToken String   @unique
+    userId       String
+    expires      DateTime
+    user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+    identifier String
+    token      String   @unique
+    expires    DateTime
+
+    @@unique([identifier, token])
+}
+
+model Group {
+    id          String   @id @default(cuid())
+    name        String
+    description String?
+    image       String?
+    isPrivate   Boolean  @default(false)
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    // Relaciones
+    members     GroupMember[]
+    posts       Post[]
+    challenges  Challenge[]
+}
+
+model GroupMember {
+    id        String   @id @default(cuid())
+    role      String   @default("MEMBER") // MEMBER, ADMIN, OWNER
+    joinedAt  DateTime @default(now())
+
+    // Relaciones
+    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    userId    String
+    group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+    groupId   String
+
+    @@unique([userId, groupId])
+}
+
+model Post {
+    id        String   @id @default(cuid())
+    content   String
+    image     String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // Relaciones
+    author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+    authorId  String
+    group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+    groupId   String
+    comments  Comment[]
+    likes     PostLike[]
+}
+
+model Comment {
+    id        String   @id @default(cuid())
+    content   String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    
+    // Relaciones
+    post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+    postId    String
+    author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+    authorId  String
+}
+
+model PostLike {
+    id        String   @id @default(cuid())
+    createdAt DateTime @default(now())
+    
+    // Relaciones
+    post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+    postId    String
+    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    userId    String
+
+    @@unique([postId, userId])
+}
+
+model Activity {
+    id          String   @id @default(cuid())
+    type        String   // RUNNING, CYCLING, SWIMMING, WEIGHTLIFTING, etc.
+    duration    Int      // in minutes
+    distance    Float?   // in kilometers
+    calories    Int?
+    notes       String?
+    date        DateTime
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    // Relaciones
+    user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    userId      String
+}
+
+model Challenge {
+    id          String   @id @default(cuid())
+    title       String
+    description String
+    startDate   DateTime
+    endDate     DateTime
+    goal        Int      // e.g., run 10km, do 100 pushups
+    goalType    String   // DISTANCE, REPETITIONS, TIME
+    isPublic    Boolean  @default(true)
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    // Relaciones
+    group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+    groupId     String
+    participants ChallengeParticipant[]
+}
+
+model ChallengeParticipant {
+    id           String   @id @default(cuid())
+    progress     Int      @default(0)
+    joinedAt     DateTime @default(now())
+    completedAt  DateTime?
+
+    // Relaciones
+    user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    userId       String
+    challenge    Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+    challengeId  String
+
+    @@unique([userId, challengeId])
+}
+
+model Notification {
+    id        String   @id @default(cuid())
+    type      String   // MENTION, LIKE, COMMENT, CHALLENGE, INVITE, etc.
+    content   String
+    read      Boolean  @default(false)
+    createdAt DateTime @default(now())
+
+    // Relaciones
+    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    userId    String
+}
+
+model Achievement {
+    id          String   @id @default(cuid())
+    name        String
+    description String
+    icon        String
+    points      Int      @default(10)
+    createdAt   DateTime @default(now())
+    
+    // Relaciones
+    users       UserAchievement[]
+}
+
+model UserAchievement {
+    id            String   @id @default(cuid())
+    earnedAt      DateTime @default(now())
+    
+    // Relaciones
+    user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+    userId        String
+    achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+    achievementId String
+
+    @@unique([userId, achievementId])
+}
+
+// Nuevo schema de Prisma para GymConnect
+model roles {
+  id          Int       @id @default(autoincrement())
+  nombre      String    @unique
+  descripcion String?
+
+  usuarios    usuarios[]
+}
+
+model usuarios {
+  id                Int           @id @default(autoincrement())
+  nombre            String
+  apellido_paterno  String
+  apellido_materno  String
+  fecha_nacimiento  DateTime
+  correo            String        @unique
+  contrasena        String
+  foto_perfil       String?
+  pregunta_seguridad String?
+  respuesta_seguridad String?
+  id_rol            Int
+  fecha_creacion    DateTime      @default(now())
+
+  rol               roles         @relation(fields: [id_rol], references: [id])
+  grupos_moderados  grupos[]      @relation("moderador")
+  miembros_grupo    miembros_grupo[]
+  actividades       actividades[]
+  mensajes_enviados mensajes[]    @relation("remitente")
+  mensajes_recibidos mensajes[]   @relation("destinatario")
+  publicaciones     publicaciones[]
+  comentarios       comentarios[]
+  amigos1           amigos[]      @relation("usuario1")
+  amigos2           amigos[]      @relation("usuario2")
+  seguidores1       seguidores[]  @relation("seguidor")
+  seguidores2       seguidores[]  @relation("seguido")
+  notificaciones    notificaciones[]
+  logros_usuario    logros_usuario[]
+  rachas_usuario    rachas_usuario[]
+  metas_personales  metas_personales[]
+  actividades_programadas usuarios_actividades_programadas[]
+  participaciones_desafios usuarios_desafios[]
+  inscripciones_eventos inscripciones_eventos[]
+  rankings_grupo rankings_grupo[]
+}
+
+model grupos {
+  id             Int           @id @default(autoincrement())
+  nombre         String        @unique
+  descripcion    String?
+  id_moderador   Int
+  privacidad     String        @default("publico")
+  fecha_creacion DateTime      @default(now())
+
+  moderador      usuarios      @relation("moderador", fields: [id_moderador], references: [id])
+  miembros       miembros_grupo[]
+  mensajes       mensajes[]
+  reglas_internas reglas_internas[]
+  roles_grupo    roles_grupo[]
+  desafios       desafios[]
+  actividades_programadas actividades_programadas[]
+  eventos        eventos[]
+  rankings_grupo rankings_grupo[]
+}
+
+model miembros_grupo {
+  id           Int       @id @default(autoincrement())
+  id_grupo     Int
+  id_usuario   Int
+  rol          String    @default("miembro")
+  fecha_ingreso DateTime @default(now())
+  estado       String    @default("activo")
+
+  grupo        grupos    @relation(fields: [id_grupo], references: [id])
+  usuario      usuarios  @relation(fields: [id_usuario], references: [id])
+}
+
+model actividades {
+  id             Int       @id @default(autoincrement())
+  id_usuario     Int
+  tipo_actividad String
+  duracion       Int
+  intensidad     String?
+  distancia      Float?    // Decimal(8,2) -> Float
+  calorias       Float?    // Decimal(8,2) -> Float
+  repeticiones   Int?
+  fecha_actividad DateTime
+  origen         String    @default("manual")
+
+  usuario        usuarios  @relation(fields: [id_usuario], references: [id])
+}
+
+model actividades_programadas {
+  id           Int      @id @default(autoincrement())
+  id_grupo     Int?
+  nombre       String
+  tipo_actividad String
+  frecuencia   String   // diaria, semanal, mensual, etc.
+  horario      String   // o usar tipo hora si es posible
+  duracion     Int
+  descripcion  String?
+  acceso       String   // público, solo grupo, amigos, seguidores
+
+  grupo        grupos?  @relation(fields: [id_grupo], references: [id])
+  inscripciones usuarios_actividades_programadas[]
+}
+
+model usuarios_actividades_programadas {
+  id                     Int       @id @default(autoincrement())
+  id_usuario             Int
+  id_actividad_programada Int
+  fecha_inscripcion      DateTime  @default(now())
+
+  usuario                usuarios  @relation(fields: [id_usuario], references: [id])
+  actividad_programada   actividades_programadas @relation(fields: [id_actividad_programada], references: [id])
+}
+
+model eventos {
+  id            Int      @id @default(autoincrement())
+  id_grupo      Int
+  nombre        String
+  tipo_evento   String
+  fecha         DateTime
+  hora          String
+  duracion      Int
+  ubicacion     String?
+  descripcion   String?
+
+  grupo         grupos   @relation(fields: [id_grupo], references: [id])
+  inscripciones inscripciones_eventos[]
+}
+
+model inscripciones_eventos {
+  id        Int      @id @default(autoincrement())
+  id_evento Int
+  id_usuario Int
+  fecha_inscripcion DateTime @default(now())
+
+  evento    eventos  @relation(fields: [id_evento], references: [id])
+  usuario   usuarios @relation(fields: [id_usuario], references: [id])
+}
+
+model mensajes {
+  id             Int       @id @default(autoincrement())
+  id_remitente   Int
+  id_destinatario Int
+  contenido      String
+  fecha_envio    DateTime  @default(now())
+  estado         String    @default("enviado")
+  id_grupo       Int?
+
+  remitente      usuarios  @relation("remitente", fields: [id_remitente], references: [id])
+  destinatario   usuarios  @relation("destinatario", fields: [id_destinatario], references: [id])
+  grupo          grupos?   @relation(fields: [id_grupo], references: [id])
+}
+
+model publicaciones {
+  id              Int       @id @default(autoincrement())
+  id_autor        Int
+  contenido       String
+  fecha_publicacion DateTime @default(now())
+  privacidad      String    @default("publico")
+
+  autor           usuarios  @relation(fields: [id_autor], references: [id])
+  comentarios     comentarios[]
+}
+
+model comentarios {
+  id              Int       @id @default(autoincrement())
+  id_publicacion  Int
+  id_autor        Int
+  contenido       String
+  fecha_comentario DateTime @default(now())
+
+  publicacion     publicaciones @relation(fields: [id_publicacion], references: [id])
+  autor           usuarios      @relation(fields: [id_autor], references: [id])
+}
+
+model amigos {
+  id             Int       @id @default(autoincrement())
+  id_usuario1    Int
+  id_usuario2    Int
+  estado         String    @default("pendiente")
+  fecha_solicitud DateTime @default(now())
+
+  usuario1       usuarios  @relation("usuario1", fields: [id_usuario1], references: [id])
+  usuario2       usuarios  @relation("usuario2", fields: [id_usuario2], references: [id])
+}
+
+model seguidores {
+  id           Int       @id @default(autoincrement())
+  id_seguidor  Int
+  id_seguido   Int
+  fecha_inicio DateTime  @default(now())
+
+  seguidor     usuarios  @relation("seguidor", fields: [id_seguidor], references: [id])
+  seguido      usuarios  @relation("seguido", fields: [id_seguido], references: [id])
+}
+
+model notificaciones {
+  id            Int       @id @default(autoincrement())
+  id_usuario    Int
+  tipo          String?
+  contenido     String?
+  fecha_creacion DateTime @default(now())
+  leida         Boolean   @default(false)
+
+  usuario       usuarios  @relation(fields: [id_usuario], references: [id])
+}
+
+model desafios {
+  id           Int       @id @default(autoincrement())
+  id_grupo     Int
+  nombre       String
+  objetivo     String
+  descripcion  String?
+  fecha_inicio DateTime
+  fecha_termino DateTime
+  reglas       String?
+  es_equipo    Boolean   @default(false)
+
+  grupo        grupos    @relation(fields: [id_grupo], references: [id])
+  participantes usuarios_desafios[]
+}
+
+model usuarios_desafios {
+  id          Int       @id @default(autoincrement())
+  id_usuario  Int
+  id_desafio  Int
+  progreso    String?
+  fecha_registro DateTime @default(now())
+
+  usuario     usuarios  @relation(fields: [id_usuario], references: [id])
+  desafio     desafios   @relation(fields: [id_desafio], references: [id])
+}
+
+model logros {
+  id          Int       @id @default(autoincrement())
+  nombre      String
+  descripcion String?
+  tipo        String    // Por ejemplo: cantidad actividades, desafíos, asistencia, metas
+  criterio    String    // JSON o texto que describa el criterio para el logro
+  logros_usuario logros_usuario[]
+}
+
+model logros_usuario {
+  id         Int       @id @default(autoincrement())
+  id_usuario Int
+  id_logro   Int
+  fecha_obtencion DateTime @default(now())
+
+  usuario    usuarios @relation(fields: [id_usuario], references: [id])
+  logro      logros   @relation(fields: [id_logro], references: [id])
+}
+
+model rachas {
+  id         Int       @id @default(autoincrement())
+  nombre     String
+  descripcion String?
+  criterio   String    // descripción o JSON del criterio
+  rachas_usuario rachas_usuario[]
+}
+
+model rachas_usuario {
+  id         Int       @id @default(autoincrement())
+  id_usuario Int
+  id_racha   Int
+  fecha_inicio DateTime
+  duracion   Int      // en días
+  motivo_fin String?
+
+  usuario    usuarios @relation(fields: [id_usuario], references: [id])
+  racha      rachas   @relation(fields: [id_racha], references: [id])
+}
+
+model metas_personales {
+  id            Int       @id @default(autoincrement())
+  id_usuario    Int
+  nombre_meta   String
+  valor_objetivo Int
+  unidad        String    // ej: pasos, calorías, días, sesiones, etc.
+  fecha_creacion DateTime @default(now())
+
+  usuario       usuarios  @relation(fields: [id_usuario], references: [id])
+}
+
+model rankings_grupo {
+  id         Int       @id @default(autoincrement())
+  id_grupo   Int
+  id_usuario Int
+  puntos     Int
+  periodo    String    // semanal, mensual, histórico
+  tipo       String    // grupo, social, etc.
+
+  grupo      grupos    @relation(fields: [id_grupo], references: [id])
+  usuario    usuarios  @relation(fields: [id_usuario], references: [id])
+}
+
+model roles_grupo {
+  id         Int      @id @default(autoincrement())
+  id_grupo   Int
+  nombre     String
+  permisos   String   // JSON o texto con permisos
+
+  grupo      grupos   @relation(fields: [id_grupo], references: [id])
+}
+
+model reglas_internas {
+  id        Int    @id @default(autoincrement())
+  id_grupo  Int
+  descripcion String
+
+  grupo     grupos @relation(fields: [id_grupo], references: [id])
+}
