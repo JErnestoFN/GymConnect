@@ -1,13 +1,21 @@
-// Simulamos (mock) que el servicio detecta duplicado y lanza un error de dominio
+// =========================================
+// P2 - Correo duplicado
+// Archivo: src/__tests__/api/auth/register.duplicado.spec.ts
+// =========================================
 jest.mock('@/services/auth.service', () => ({
   AuthService: {
     register: jest.fn().mockRejectedValue({ code: 'EMAIL_TAKEN' }),
   },
 }));
 
-import { POST } from '@/app/api/auth/register/route';
+import { POST as PostDuplicado } from '@/app/api/auth/register/route';
+import { AuthService } from '@/services/auth.service';
 
 describe('POST /api/auth/register — email duplicado', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('devuelve 409 con code EMAIL_TAKEN', async () => {
     const req = new Request('http://test/api/auth/register', {
       method: 'POST',
@@ -20,11 +28,12 @@ describe('POST /api/auth/register — email duplicado', () => {
       }),
     });
 
-    const res = await POST(req);
+    const res = await PostDuplicado(req);
+
+    expect(AuthService.register).toHaveBeenCalledTimes(1);
     expect(res.status).toBe(409);
 
     const body = await res.json();
     expect(body.code).toBe('EMAIL_TAKEN');
   });
 });
-

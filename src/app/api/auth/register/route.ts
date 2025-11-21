@@ -1,33 +1,62 @@
 import { registerSchema } from '@/models/auth.schema';
+import { ZodError } from 'zod';
 import { AuthService } from '@/services/auth.service';
 
-function mapDomainErrorToHttp(err: any) {
-  if (err?.name === 'ZodError') {
-    return { status: 400, body: { errors: err.flatten() } };
+type HttpErrorBody =
+  | { errors: unknown }
+  | { code: 'EMAIL_TAKEN' }
+  | { error: 'internal_error' };
+
+function mapDomainErrorToHttp(err: unknown): { status: number; body: HttpErrorBody } {
+  if (err instanceof ZodError) {
+    const flattened = err.flatten();
+    const extraFields = err.issues
+      .filter((issue) => issue.code === 'unrecognized_keys')
+      .flatMap((issue) => issue.keys ?? []);
+    const errors =
+      extraFields.length > 0 ? { ...flattened, extraFields } : flattened;
+    return { status: 400, body: { errors } };
   }
-  if (err?.code === 'EMAIL_TAKEN' || err?.code === 'P2002') {
-    return { status: 409, body: { code: 'EMAIL_TAKEN' } };
+
+  if (typeof err === 'object' && err !== null && 'code' in err) {
+    const code = (err as { code?: unknown }).code;
+    if (code === 'EMAIL_TAKEN' || code === 'P2002') {
+      return { status: 409, body: { code: 'EMAIL_TAKEN' } };
+    }
   }
+
   return { status: 500, body: { error: 'internal_error' } };
 }
 
 export async function POST(req: Request) {
   try {
-    const dto = registerSchema.parse(await req.json());
-    const result = await AuthService.register(dto);
+    const raw: unknown = await req.json();
+    const dto = registerSchema.parse(raw);
+    const result: Awaited<ReturnType<typeof AuthService.register>> =
+      await AuthService.register(dto);
 
-    return new Response(JSON.stringify({ userId: result.id, email: result.email }), {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const responseBody: { userId: string; email: string; name: string } = {
+      userId: result.id,
+      email: result.email,
+      name: dto.name,
+    };
+
+    const init: ResponseInit = {
       status: 201,
       headers: {
         'Content-Type': 'application/json',
         'Location': `/api/users/${result.id}`,
       },
-    });
-  } catch (err: any) {
-    const { status, body } = mapDomainErrorToHttp(err);
-    return new Response(JSON.stringify(body), {
-      status,
+    };
+
+    return new Response(JSON.stringify(responseBody), init);
+  } catch (error: unknown) {
+    const mapped = mapDomainErrorToHttp(error);
+    return new Response(JSON.stringify(mapped.body), {
+      status: mapped.status,
       headers: { 'Content-Type': 'application/json' },
     });
   }
 }
+
